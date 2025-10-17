@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS select_checks (
     faktura_summa DECIMAL(15, 2),
     faktura_miqdor DECIMAL(15, 8),
     bir_birlik_narxi DECIMAL(15, 2),
+    umumiy_chek_summa DECIMAL(15, 2),
     selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     selected_from_checks_id INTEGER REFERENCES checks(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

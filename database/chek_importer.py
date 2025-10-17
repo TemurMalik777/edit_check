@@ -2,6 +2,7 @@ import openpyxl
 import psycopg2
 import os
 from dotenv import load_dotenv
+from excel_handler.check_processor import process_checks
 import logging
 
 load_dotenv()
@@ -35,20 +36,21 @@ class ChekImporter:
             self.cur = self.conn.cursor()
             logger.info("✅ PostgreSQL bilan ulanish o‘rnatildi")
 
-            self.cur.execute("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";")
+            self.cur.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
 
-            # ✅ Jadval tuzilmasini o‘qib bajarish
             schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
-            with open(schema_path, "r", encoding="utf-8") as f:
-                sql_script = f.read()
-                self.cur.execute(sql_script)
-                logger.info("📦 schema.sql bajarildi (jadval va funksiyalar yaratildi)")
+            if os.path.exists(schema_path):
+                with open(schema_path, "r", encoding="utf-8") as f:
+                    sql_script = f.read()
+                    self.cur.execute(sql_script)
+                    logger.info("📦 schema.sql bajarildi (jadval va funksiyalar yaratildi)")
+            else:
+                logger.warning("⚠️ schema.sql topilmadi!")
 
             self.conn.commit()
         except Exception as e:
             logger.error(f"❌ Ulanishda yoki schema.sql bajarishda xato: {e}")
             raise
-
 
     def disconnect(self):
         if self.cur:
@@ -67,11 +69,22 @@ class ChekImporter:
         except:
             return None
 
+    def find_correct_sheet(self, wb):
+        for name in wb.sheetnames:
+            sh = wb[name]
+            headers = [str(c.value).strip() if c.value else "" for c in sh[1]]
+            if "Chek_raqam" in headers and "MXIK" in headers:
+                logger.info(f"✅ '{name}' nomli list tanlandi.")
+                return sh
+        logger.warning("⚠️ Mos list topilmadi, birinchi list o‘qiladi.")
+        return wb.active
+
     def read_excel(self, path):
         try:
-            wb = openpyxl.load_workbook(path)
-            sheet = wb.active
-            headers = [cell.value for cell in sheet[1]]
+            wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+            sheet = self.find_correct_sheet(wb)
+
+            headers = [str(cell.value).strip().replace(" ", "_") for cell in next(sheet.iter_rows(min_row=1, max_row=1)) if cell.value]
             expected = ["Chek_raqam", "Summa", "Miqdor", "MXIK", "ulchov", "Faktura_summa", "Faktura_miqdor"]
 
             if headers != expected:
@@ -81,7 +94,7 @@ class ChekImporter:
 
             data = []
             for row in sheet.iter_rows(min_row=2, values_only=True):
-                if not row or not row[0]:
+                if not row or all(v is None for v in row):
                     continue
 
                 data.append({
@@ -94,12 +107,13 @@ class ChekImporter:
                     "faktura_miqdor": self.clean_numeric(row[6]),
                 })
 
-            logger.info(f"📊 {len(data)} ta qator o‘qildi")
+            logger.info(f"📊 Excel fayldan {len(data)} ta qator o‘qildi")
             return data
 
         except Exception as e:
             logger.error(f"❌ Excelni o‘qishda xato: {e}")
             return []
+
 
     def insert_data(self, data):
         if not self.cur:
@@ -126,8 +140,8 @@ class ChekImporter:
                 ))
                 inserted += 1
             except psycopg2.Error as e:
-                logger.warning(f"⚠️ {row['chek_raqam']} kiritilmadi: {e.pgerror}")
                 skipped += 1
+                logger.warning(f"⚠️ {row['chek_raqam']} kiritilmadi: {e.pgerror}")
 
         self.conn.commit()
         logger.info(f"✅ {inserted} ta yozuv kiritildi, {skipped} ta o‘tkazib yuborildi")
