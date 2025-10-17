@@ -1,0 +1,19 @@
+PyQt6
+selenium
+openpyxl
+requests
+
+# Core dependencies
+pandas==2.1.4
+openpyxl==3.1.2
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+
+# Additional utilities
+tabulate==0.9.0
+numpy==1.26.2
+
+# Optional - for advanced features
+xlsxwriter==3.1.9
+matplotlib==3.8.2
+seaborn==0.13.0
